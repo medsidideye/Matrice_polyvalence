@@ -390,10 +390,10 @@ with tab6:
 
     chart_articles = alt.Chart(all_articles).mark_bar().encode(
         x=alt.X(field="Code article", type="nominal", sort="-y", title="Code article"),
-        y=alt.Y(field="Nombre total d'utilisations", type="quantitative", title="Nombre d'utilisations"),
+        y=alt.Y(field="Nombre total dutilisations", type="quantitative", title="Nombre dutilisations"),
         tooltip=[
             alt.Tooltip(field="Code article", type="nominal", title="Code article"),
-            alt.Tooltip(field="Nombre total d'utilisations", type="quantitative", title="Nombre d'utilisations")
+            alt.Tooltip(field="Nombre total dutilisations", type="quantitative", title="Nombre dutilisations")
         ]
     ).properties(height=400)
 
