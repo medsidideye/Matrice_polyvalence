@@ -340,7 +340,7 @@ with tab6:
     )
 
     # =========================
-    # Jointures pour inclure les valeurs à 0
+    # Jointures pour inclure les 0
     # =========================
     all_moules = liste_complete_moules.merge(
         compte_moules,
@@ -373,6 +373,96 @@ with tab6:
     all_of = all_of.sort_values(by="Nombre occurrence", ascending=False).reset_index(drop=True)
 
     # =========================
+    # Détail machines pour les moules
+    # =========================
+    detail_machine_moule = (
+        base_filtre.groupby(["Moule", "Machine"])
+        .size()
+        .reset_index(name="Nombre")
+    )
+
+    detail_machine_moule["Texte machine"] = (
+        detail_machine_moule["Machine"].astype(str)
+        + " : "
+        + detail_machine_moule["Nombre"].astype(int).astype(str)
+        + " fois"
+    )
+
+    resume_machine_moule = (
+        detail_machine_moule.groupby("Moule")["Texte machine"]
+        .apply(lambda x: " | ".join(x))
+        .reset_index(name="Detail machines")
+    )
+
+    all_moules = all_moules.merge(
+        resume_machine_moule,
+        on="Moule",
+        how="left"
+    )
+
+    all_moules["Detail machines"] = all_moules["Detail machines"].fillna("Aucune machine")
+
+    # =========================
+    # Détail machines pour les articles
+    # =========================
+    detail_machine_article = (
+        base_filtre.groupby(["Code article", "Machine"])
+        .size()
+        .reset_index(name="Nombre")
+    )
+
+    detail_machine_article["Texte machine"] = (
+        detail_machine_article["Machine"].astype(str)
+        + " : "
+        + detail_machine_article["Nombre"].astype(int).astype(str)
+        + " fois"
+    )
+
+    resume_machine_article = (
+        detail_machine_article.groupby("Code article")["Texte machine"]
+        .apply(lambda x: " | ".join(x))
+        .reset_index(name="Detail machines")
+    )
+
+    all_articles = all_articles.merge(
+        resume_machine_article,
+        on="Code article",
+        how="left"
+    )
+
+    all_articles["Detail machines"] = all_articles["Detail machines"].fillna("Aucune machine")
+
+    # =========================
+    # Détail machines pour les OF
+    # =========================
+    detail_machine_of = (
+        base_filtre.groupby(["OF", "Machine"])
+        .size()
+        .reset_index(name="Nombre")
+    )
+
+    detail_machine_of["Texte machine"] = (
+        detail_machine_of["Machine"].astype(str)
+        + " : "
+        + detail_machine_of["Nombre"].astype(int).astype(str)
+        + " fois"
+    )
+
+    resume_machine_of = (
+        detail_machine_of.groupby("OF")["Texte machine"]
+        .apply(lambda x: " | ".join(x))
+        .reset_index(name="Detail machines")
+    )
+
+    all_of = all_of.merge(
+        resume_machine_of,
+        on="OF",
+        how="left"
+    )
+
+    all_of["Detail machines"] = all_of["Detail machines"].fillna("Aucune machine")
+
+    # =========================
     # Top moules
     # =========================
     st.markdown("### Top moules")
@@ -380,7 +470,11 @@ with tab6:
     chart_moules = alt.Chart(all_moules).mark_bar().encode(
         x=alt.X("Moule:N", sort="-y", title="Numero moule"),
         y=alt.Y("Nombre montage:Q", title="Nombre montage"),
-        tooltip=["Moule", "Nombre montage"]
+        tooltip=[
+            alt.Tooltip("Moule:N", title="Moule"),
+            alt.Tooltip("Nombre montage:Q", title="Nombre montage"),
+            alt.Tooltip("Detail machines:N", title="Machines")
+        ]
     ).properties(height=400)
 
     st.altair_chart(chart_moules, use_container_width=True)
@@ -393,7 +487,11 @@ with tab6:
     chart_articles = alt.Chart(all_articles).mark_bar().encode(
         x=alt.X("Code article:N", sort="-y", title="Code article"),
         y=alt.Y("Nombre utilisation:Q", title="Nombre utilisation"),
-        tooltip=["Code article", "Nombre utilisation"]
+        tooltip=[
+            alt.Tooltip("Code article:N", title="Code article"),
+            alt.Tooltip("Nombre utilisation:Q", title="Nombre utilisation"),
+            alt.Tooltip("Detail machines:N", title="Machines")
+        ]
     ).properties(height=400)
 
     st.altair_chart(chart_articles, use_container_width=True)
@@ -406,7 +504,11 @@ with tab6:
     chart_of = alt.Chart(all_of).mark_bar().encode(
         x=alt.X("OF:N", sort="-y", title="OF"),
         y=alt.Y("Nombre occurrence:Q", title="Nombre occurrence"),
-        tooltip=["OF", "Nombre occurrence"]
+        tooltip=[
+            alt.Tooltip("OF:N", title="OF"),
+            alt.Tooltip("Nombre occurrence:Q", title="Nombre occurrence"),
+            alt.Tooltip("Detail machines:N", title="Machines")
+        ]
     ).properties(height=400)
 
     st.altair_chart(chart_of, use_container_width=True)
