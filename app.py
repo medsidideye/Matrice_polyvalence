@@ -324,23 +324,23 @@ with tab6:
     compte_moules = (
         base_filtre.groupby("Moule")
         .size()
-        .reset_index(name="Nombre total de montages")
+        .reset_index(name="Nombre montage")
     )
 
     compte_articles = (
         base_filtre.groupby("Code article")
         .size()
-        .reset_index(name="Nombre total d'utilisations")
+        .reset_index(name="Nombre utilisation")
     )
 
     compte_of = (
         base_filtre.groupby("OF")
         .size()
-        .reset_index(name="Nombre total d'occurrences")
+        .reset_index(name="Nombre occurrence")
     )
 
     # =========================
-    # Jointures pour inclure les 0
+    # Jointures pour inclure les valeurs à 0
     # =========================
     all_moules = liste_complete_moules.merge(
         compte_moules,
@@ -360,15 +360,29 @@ with tab6:
         how="left"
     )
 
-    # Remplacer les NaN par 0
-    all_moules["Nombre total de montages"] = all_moules["Nombre total de montages"].fillna(0)
-    all_articles["Nombre total d'utilisations"] = all_articles["Nombre total d'utilisations"].fillna(0)
-    all_of["Nombre total d'occurrences"] = all_of["Nombre total d'occurrences"].fillna(0)
+    # =========================
+    # Remplacer NaN par 0 et convertir en entier
+    # =========================
+    all_moules["Nombre montage"] = all_moules["Nombre montage"].fillna(0).astype(int)
+    all_articles["Nombre utilisation"] = all_articles["Nombre utilisation"].fillna(0).astype(int)
+    all_of["Nombre occurrence"] = all_of["Nombre occurrence"].fillna(0).astype(int)
 
     # Trier
-    all_moules = all_moules.sort_values(by="Nombre total de montages", ascending=False).reset_index(drop=True)
-    all_articles = all_articles.sort_values(by="Nombre total d'utilisations", ascending=False).reset_index(drop=True)
-    all_of = all_of.sort_values(by="Nombre total d'occurrences", ascending=False).reset_index(drop=True)
+    all_moules = all_moules.sort_values(by="Nombre montage", ascending=False).reset_index(drop=True)
+    all_articles = all_articles.sort_values(by="Nombre utilisation", ascending=False).reset_index(drop=True)
+    all_of = all_of.sort_values(by="Nombre occurrence", ascending=False).reset_index(drop=True)
+
+    # =========================
+    # Vérification rapide
+    # =========================
+    st.write("Top moules - aperçu")
+    st.dataframe(all_moules.head(10), use_container_width=True)
+
+    st.write("Top articles - aperçu")
+    st.dataframe(all_articles.head(10), use_container_width=True)
+
+    st.write("Top OF - aperçu")
+    st.dataframe(all_of.head(10), use_container_width=True)
 
     # =========================
     # Top moules
@@ -376,9 +390,9 @@ with tab6:
     st.markdown("### Top moules")
 
     chart_moules = alt.Chart(all_moules).mark_bar().encode(
-        x=alt.X("Moule:N", sort="-y", title="Numéro de moule"),
-        y=alt.Y("Nombre total de montages:Q", title="Nombre de montages"),
-        tooltip=["Moule", "Nombre total de montages"]
+        x=alt.X("Moule:N", sort="-y", title="Numero moule"),
+        y=alt.Y("Nombre montage:Q", title="Nombre montage"),
+        tooltip=["Moule", "Nombre montage"]
     ).properties(height=400)
 
     st.altair_chart(chart_moules, use_container_width=True)
@@ -389,12 +403,9 @@ with tab6:
     st.markdown("### Top articles")
 
     chart_articles = alt.Chart(all_articles).mark_bar().encode(
-        x=alt.X(field="Code article", type="nominal", sort="-y", title="Code article"),
-        y=alt.Y(field="Nombre total dutilisations", type="quantitative", title="Nombre dutilisations"),
-        tooltip=[
-            alt.Tooltip(field="Code article", type="nominal", title="Code article"),
-            alt.Tooltip(field="Nombre total dutilisations", type="quantitative", title="Nombre dutilisations")
-        ]
+        x=alt.X("Code article:N", sort="-y", title="Code article"),
+        y=alt.Y("Nombre utilisation:Q", title="Nombre utilisation"),
+        tooltip=["Code article", "Nombre utilisation"]
     ).properties(height=400)
 
     st.altair_chart(chart_articles, use_container_width=True)
@@ -406,8 +417,8 @@ with tab6:
 
     chart_of = alt.Chart(all_of).mark_bar().encode(
         x=alt.X("OF:N", sort="-y", title="OF"),
-        y=alt.Y("Nombre total d'occurrences:Q", title="Nombre d'occurrences"),
-        tooltip=["OF", "Nombre total d'occurrences"]
+        y=alt.Y("Nombre occurrence:Q", title="Nombre occurrence"),
+        tooltip=["OF", "Nombre occurrence"]
     ).properties(height=400)
 
     st.altair_chart(chart_of, use_container_width=True)
