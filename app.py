@@ -389,9 +389,12 @@ with tab6:
     st.markdown("### Top articles")
 
     chart_articles = alt.Chart(all_articles).mark_bar().encode(
-        x=alt.X("Code article:N", sort="-y", title="Code article"),
-        y=alt.Y("Nombre total d'utilisations:Q", title="Nombre d'utilisations"),
-        tooltip=["Code article", "Nombre total d'utilisations"]
+        x=alt.X(field="Code article", type="nominal", sort="-y", title="Code article"),
+        y=alt.Y(field="Nombre total d'utilisations", type="quantitative", title="Nombre d'utilisations"),
+        tooltip=[
+            alt.Tooltip(field="Code article", type="nominal", title="Code article"),
+            alt.Tooltip(field="Nombre total d'utilisations", type="quantitative", title="Nombre d'utilisations")
+        ]
     ).properties(height=400)
 
     st.altair_chart(chart_articles, use_container_width=True)
