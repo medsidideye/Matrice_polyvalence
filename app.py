@@ -43,6 +43,42 @@ st.markdown(
 def nettoyer_texte(serie):
     return serie.astype(str).str.strip()
 
+def preparer_colonne_date(df, colonne_date):
+    df = df.copy()
+    df[colonne_date] = pd.to_datetime(df[colonne_date], errors="coerce")
+    return df
+
+def compter_series_par_machine(df, colonne_element):
+    """
+    Compte le nombre de séries par machine.
+    Une nouvelle série commence quand, sur une même machine,
+    la valeur change par rapport à la ligne précédente.
+    """
+    df_temp = df.copy()
+
+    # On garde une vraie date pour le tri
+    df_temp = df_temp.sort_values(by=["Machine", "Date", "OF"]).reset_index(drop=True)
+
+    precedent_machine = df_temp["Machine"].shift(1)
+    precedent_element = df_temp[colonne_element].shift(1)
+
+    df_temp["Nouvelle_serie"] = (
+        (df_temp["Machine"] != precedent_machine) |
+        (df_temp[colonne_element] != precedent_element)
+    )
+
+    debuts_series = df_temp[df_temp["Nouvelle_serie"]].copy()
+
+    resultat = (
+        debuts_series.groupby([colonne_element, "Machine"])
+        .size()
+        .reset_index(name="Nombre series")
+        .sort_values(by=[colonne_element, "Nombre series"], ascending=[True, False])
+        .reset_index(drop=True)
+    )
+
+    return resultat
+
 @st.cache_data
 def charger_donnees(fichier1, fichier2):
     df1 = pd.read_excel(fichier1)
@@ -84,13 +120,14 @@ def charger_donnees(fichier1, fichier2):
     base_recherche["Moule"] = base_recherche["Moule"].replace(["nan", "None", ""], pd.NA)
     base_recherche["Libellé article"] = base_recherche["Libellé article"].replace(["nan", "None", ""], pd.NA)
 
+    # Date réelle pour les tris et calculs
     base_recherche["Date"] = pd.to_datetime(base_recherche["Date"], errors="coerce")
-    base_recherche["Date"] = base_recherche["Date"].dt.strftime("%Y-%m-%d")
-    base_recherche["Date"] = base_recherche["Date"].replace(["NaT", "nan", "None"], pd.NA)
 
+    # Colonnes d'affichage
     base_recherche["Moule"] = base_recherche["Moule"].fillna("Non renseigné")
     base_recherche["Libellé article"] = base_recherche["Libellé article"].fillna("Non renseigné")
-    base_recherche["Date"] = base_recherche["Date"].fillna("Non renseignée")
+    base_recherche["Date affichage"] = base_recherche["Date"].dt.strftime("%Y-%m-%d")
+    base_recherche["Date affichage"] = base_recherche["Date affichage"].fillna("Non renseignée")
 
     base_recherche = base_recherche.drop_duplicates().reset_index(drop=True)
 
@@ -172,27 +209,31 @@ c5.metric("Machines", base_filtre["Machine"].nunique())
 st.divider()
 
 # =========================
-# Indicateurs métier
+# Indicateurs métier (par séries)
 # =========================
+series_moules_global = compter_series_par_machine(base_filtre, "Moule")
+series_articles_global = compter_series_par_machine(base_filtre, "Code article")
+series_of_global = compter_series_par_machine(base_filtre, "OF")
+
 moule_top = (
-    base_filtre.groupby("Moule")
-    .size()
+    series_moules_global.groupby("Moule")["Nombre series"]
+    .sum()
     .reset_index(name="Nombre")
     .sort_values(by="Nombre", ascending=False)
     .reset_index(drop=True)
 )
 
 article_top = (
-    base_filtre.groupby("Code article")
-    .size()
+    series_articles_global.groupby("Code article")["Nombre series"]
+    .sum()
     .reset_index(name="Nombre")
     .sort_values(by="Nombre", ascending=False)
     .reset_index(drop=True)
 )
 
 of_top = (
-    base_filtre.groupby("OF")
-    .size()
+    series_of_global.groupby("OF")["Nombre series"]
+    .sum()
     .reset_index(name="Nombre")
     .sort_values(by="Nombre", ascending=False)
     .reset_index(drop=True)
@@ -235,9 +276,9 @@ with tab1:
     if article_input:
         resultat = base_recherche[
             base_recherche["Code article"].str.contains(article_input.strip(), case=False, na=False)
-        ][["Code article", "Libellé article", "OF", "Date", "Moule", "Machine"]].drop_duplicates()
+        ][["Code article", "Libellé article", "OF", "Date affichage", "Moule", "Machine"]].drop_duplicates()
 
-        resultat = resultat.sort_values(by=["Date", "OF"]).reset_index(drop=True)
+        resultat = resultat.sort_values(by=["Date affichage", "OF"]).reset_index(drop=True)
         st.write(f"Résultats : {len(resultat)} ligne(s)")
         st.dataframe(resultat, use_container_width=True)
 
@@ -248,8 +289,9 @@ with tab2:
     if of_input:
         resultat = base_recherche[
             base_recherche["OF"] == of_input.strip()
-        ].drop_duplicates().sort_values(by=["Date"]).reset_index(drop=True)
+        ][["OF", "Code article", "Libellé article", "Date affichage", "Moule", "Machine"]].drop_duplicates()
 
+        resultat = resultat.sort_values(by=["Date affichage"]).reset_index(drop=True)
         st.write(f"Résultats : {len(resultat)} ligne(s)")
         st.dataframe(resultat, use_container_width=True)
 
@@ -260,9 +302,9 @@ with tab3:
     if moule_input:
         resultat = base_recherche[
             base_recherche["Moule"].str.contains(moule_input.strip(), case=False, na=False)
-        ][["Moule", "Machine", "OF", "Code article", "Libellé article", "Date"]].drop_duplicates()
+        ][["Moule", "Machine", "OF", "Code article", "Libellé article", "Date affichage"]].drop_duplicates()
 
-        resultat = resultat.sort_values(by=["Machine", "Date"]).reset_index(drop=True)
+        resultat = resultat.sort_values(by=["Machine", "Date affichage"]).reset_index(drop=True)
         st.write(f"Résultats : {len(resultat)} ligne(s)")
         st.dataframe(resultat, use_container_width=True)
 
@@ -273,14 +315,14 @@ with tab4:
     if machine_input:
         resultat = base_recherche[
             base_recherche["Machine"] == machine_input.strip()
-        ][["Machine", "Moule", "OF", "Code article", "Libellé article", "Date"]].drop_duplicates()
+        ][["Machine", "Moule", "OF", "Code article", "Libellé article", "Date affichage"]].drop_duplicates()
 
-        resultat = resultat.sort_values(by=["Moule", "Date"]).reset_index(drop=True)
+        resultat = resultat.sort_values(by=["Moule", "Date affichage"]).reset_index(drop=True)
         st.write(f"Résultats : {len(resultat)} ligne(s)")
         st.dataframe(resultat, use_container_width=True)
 
 with tab5:
-    st.subheader("Analyse : combien de fois sur chaque machine")
+    st.subheader("Analyse : combien de séries sur chaque machine")
 
     type_recherche = st.selectbox(
         "Choisir le type de recherche",
@@ -295,33 +337,31 @@ with tab5:
             resultat = base_recherche[
                 base_recherche["Code article"].str.contains(valeur_recherche.strip(), case=False, na=False)
             ].copy()
+            colonne = "Code article"
 
         elif type_recherche == "OF":
             resultat = base_recherche[
                 base_recherche["OF"] == valeur_recherche.strip()
             ].copy()
+            colonne = "OF"
 
         else:
             resultat = base_recherche[
                 base_recherche["Moule"].str.contains(valeur_recherche.strip(), case=False, na=False)
             ].copy()
+            colonne = "Moule"
 
         if len(resultat) == 0:
             st.warning("Aucun résultat trouvé.")
         else:
-            resume_machine = (
-                resultat.groupby("Machine")
-                .size()
-                .reset_index(name="Nombre de fois")
-                .sort_values(by="Nombre de fois", ascending=False)
-                .reset_index(drop=True)
-            )
-
+            resume_machine = compter_series_par_machine(resultat, colonne)
+            resume_machine = resume_machine.rename(columns={"Nombre series": "Nombre de fois"})
             st.dataframe(resume_machine, use_container_width=True)
 
 with tab6:
     st.subheader("Diagrammes globaux")
 
+    # Listes complètes
     liste_complete_moules = pd.DataFrame({
         "Moule": sorted(base_recherche["Moule"].dropna().unique())
     })
@@ -334,24 +374,31 @@ with tab6:
         "OF": sorted(base_recherche["OF"].dropna().unique())
     })
 
+    # Séries par machine
+    detail_machine_moule = compter_series_par_machine(base_filtre, "Moule")
+    detail_machine_article = compter_series_par_machine(base_filtre, "Code article")
+    detail_machine_of = compter_series_par_machine(base_filtre, "OF")
+
+    # Totaux
     compte_moules = (
-        base_filtre.groupby("Moule")
-        .size()
+        detail_machine_moule.groupby("Moule")["Nombre series"]
+        .sum()
         .reset_index(name="Nombre montage")
     )
 
     compte_articles = (
-        base_filtre.groupby("Code article")
-        .size()
+        detail_machine_article.groupby("Code article")["Nombre series"]
+        .sum()
         .reset_index(name="Nombre utilisation")
     )
 
     compte_of = (
-        base_filtre.groupby("OF")
-        .size()
+        detail_machine_of.groupby("OF")["Nombre series"]
+        .sum()
         .reset_index(name="Nombre occurrence")
     )
 
+    # Jointures pour inclure les valeurs à 0
     all_moules = liste_complete_moules.merge(compte_moules, on="Moule", how="left")
     all_articles = liste_complete_articles.merge(compte_articles, on="Code article", how="left")
     all_of = liste_complete_of.merge(compte_of, on="OF", how="left")
@@ -360,67 +407,63 @@ with tab6:
     all_articles["Nombre utilisation"] = all_articles["Nombre utilisation"].fillna(0).astype(int)
     all_of["Nombre occurrence"] = all_of["Nombre occurrence"].fillna(0).astype(int)
 
-    all_moules = all_moules.sort_values(by="Nombre montage", ascending=False).reset_index(drop=True)
-    all_articles = all_articles.sort_values(by="Nombre utilisation", ascending=False).reset_index(drop=True)
-    all_of = all_of.sort_values(by="Nombre occurrence", ascending=False).reset_index(drop=True)
-
-    detail_machine_moule = (
-        base_filtre.groupby(["Moule", "Machine"])
-        .size()
-        .reset_index(name="Nombre")
-    )
+    # Détail machines pour les moules
     detail_machine_moule["Texte machine"] = (
         detail_machine_moule["Machine"].astype(str)
         + " : "
-        + detail_machine_moule["Nombre"].astype(int).astype(str)
+        + detail_machine_moule["Nombre series"].astype(int).astype(str)
         + " fois"
     )
+
     resume_machine_moule = (
         detail_machine_moule.groupby("Moule")["Texte machine"]
         .apply(lambda x: " | ".join(x))
         .reset_index(name="Detail machines")
     )
+
     all_moules = all_moules.merge(resume_machine_moule, on="Moule", how="left")
     all_moules["Detail machines"] = all_moules["Detail machines"].fillna("Aucune machine")
 
-    detail_machine_article = (
-        base_filtre.groupby(["Code article", "Machine"])
-        .size()
-        .reset_index(name="Nombre")
-    )
+    # Détail machines pour les articles
     detail_machine_article["Texte machine"] = (
         detail_machine_article["Machine"].astype(str)
         + " : "
-        + detail_machine_article["Nombre"].astype(int).astype(str)
+        + detail_machine_article["Nombre series"].astype(int).astype(str)
         + " fois"
     )
+
     resume_machine_article = (
         detail_machine_article.groupby("Code article")["Texte machine"]
         .apply(lambda x: " | ".join(x))
         .reset_index(name="Detail machines")
     )
+
     all_articles = all_articles.merge(resume_machine_article, on="Code article", how="left")
     all_articles["Detail machines"] = all_articles["Detail machines"].fillna("Aucune machine")
 
-    detail_machine_of = (
-        base_filtre.groupby(["OF", "Machine"])
-        .size()
-        .reset_index(name="Nombre")
-    )
+    # Détail machines pour les OF
     detail_machine_of["Texte machine"] = (
         detail_machine_of["Machine"].astype(str)
         + " : "
-        + detail_machine_of["Nombre"].astype(int).astype(str)
+        + detail_machine_of["Nombre series"].astype(int).astype(str)
         + " fois"
     )
+
     resume_machine_of = (
         detail_machine_of.groupby("OF")["Texte machine"]
         .apply(lambda x: " | ".join(x))
         .reset_index(name="Detail machines")
     )
+
     all_of = all_of.merge(resume_machine_of, on="OF", how="left")
     all_of["Detail machines"] = all_of["Detail machines"].fillna("Aucune machine")
 
+    # Trier
+    all_moules = all_moules.sort_values(by="Nombre montage", ascending=False).reset_index(drop=True)
+    all_articles = all_articles.sort_values(by="Nombre utilisation", ascending=False).reset_index(drop=True)
+    all_of = all_of.sort_values(by="Nombre occurrence", ascending=False).reset_index(drop=True)
+
+    # Top moules
     st.markdown("### Top moules")
     chart_moules = alt.Chart(all_moules).mark_bar().encode(
         x=alt.X("Moule:N", sort="-y", title="Numero moule"),
@@ -433,6 +476,7 @@ with tab6:
     ).properties(height=400)
     st.altair_chart(chart_moules, use_container_width=True)
 
+    # Top articles
     st.markdown("### Top articles")
     chart_articles = alt.Chart(all_articles).mark_bar().encode(
         x=alt.X("Code article:N", sort="-y", title="Code article"),
@@ -445,6 +489,7 @@ with tab6:
     ).properties(height=400)
     st.altair_chart(chart_articles, use_container_width=True)
 
+    # Top OF
     st.markdown("### Top OF")
     chart_of = alt.Chart(all_of).mark_bar().encode(
         x=alt.X("OF:N", sort="-y", title="OF"),
@@ -459,7 +504,11 @@ with tab6:
 
 with tab7:
     st.subheader("Base complète")
-    base_affichage = base_filtre.sort_values(by=["Date", "OF"]).reset_index(drop=True)
+    base_affichage = base_filtre[
+        ["OF", "Code article", "Libellé article", "Date affichage", "Machine", "Moule"]
+    ].copy()
+
+    base_affichage = base_affichage.sort_values(by=["Date affichage", "OF"]).reset_index(drop=True)
     st.dataframe(base_affichage, use_container_width=True, height=500)
 
     csv = base_affichage.to_csv(index=False).encode("utf-8-sig")
