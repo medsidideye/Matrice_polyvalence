@@ -373,18 +373,6 @@ with tab6:
     all_of = all_of.sort_values(by="Nombre occurrence", ascending=False).reset_index(drop=True)
 
     # =========================
-    # Vérification rapide
-    # =========================
-    st.write("Top moules - aperçu")
-    st.dataframe(all_moules.head(10), use_container_width=True)
-
-    st.write("Top articles - aperçu")
-    st.dataframe(all_articles.head(10), use_container_width=True)
-
-    st.write("Top OF - aperçu")
-    st.dataframe(all_of.head(10), use_container_width=True)
-
-    # =========================
     # Top moules
     # =========================
     st.markdown("### Top moules")
