@@ -44,9 +44,9 @@ def nettoyer_texte(serie):
     return serie.astype(str).str.strip()
 
 @st.cache_data
-def charger_donnees():
-    df1 = pd.read_excel("moule par OF.XLSX")
-    df2 = pd.read_excel("Liste OF 01.04.24 au 03.04.26.xlsx")
+def charger_donnees(fichier1, fichier2):
+    df1 = pd.read_excel(fichier1)
+    df2 = pd.read_excel(fichier2)
 
     df1["Ordre_str"] = nettoyer_texte(df1["Ordre"])
     df2["N_OF_GPAO_str"] = nettoyer_texte(df2["N_OF_GPAO"])
@@ -96,10 +96,34 @@ def charger_donnees():
 
     return base_recherche
 
-base_recherche = charger_donnees()
+# =========================
+# Chargement des fichiers
+# =========================
+st.sidebar.header("Chargement des fichiers")
+
+fichier1 = st.sidebar.file_uploader(
+    "Charger le fichier moule par OF",
+    type=["xlsx"]
+)
+
+fichier2 = st.sidebar.file_uploader(
+    "Charger le fichier liste OF",
+    type=["xlsx"]
+)
+
+if fichier1 is None or fichier2 is None:
+    st.info("Charge les deux fichiers Excel dans la barre latérale pour utiliser l'application.")
+    st.stop()
+
+try:
+    base_recherche = charger_donnees(fichier1, fichier2)
+except Exception as e:
+    st.error("Erreur lors du chargement ou du traitement des fichiers.")
+    st.exception(e)
+    st.stop()
 
 # =========================
-# Sidebar
+# Sidebar filtres
 # =========================
 st.sidebar.header("Filtres globaux")
 
@@ -192,7 +216,7 @@ k3.metric("OF le plus fréquent", of_top_val, delta=f"{of_top_n} fois")
 st.divider()
 
 # =========================
-# Recherches d'abord
+# Onglets
 # =========================
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "Recherche par article",
@@ -271,25 +295,20 @@ with tab5:
             resultat = base_recherche[
                 base_recherche["Code article"].str.contains(valeur_recherche.strip(), case=False, na=False)
             ].copy()
-            titre = f"Répartition par machine pour l'article : {valeur_recherche}"
 
         elif type_recherche == "OF":
             resultat = base_recherche[
                 base_recherche["OF"] == valeur_recherche.strip()
             ].copy()
-            titre = f"Répartition par machine pour l'OF : {valeur_recherche}"
 
         else:
             resultat = base_recherche[
                 base_recherche["Moule"].str.contains(valeur_recherche.strip(), case=False, na=False)
             ].copy()
-            titre = f"Répartition par machine pour le moule : {valeur_recherche}"
 
         if len(resultat) == 0:
             st.warning("Aucun résultat trouvé.")
         else:
-            st.markdown(f"### {titre}")
-
             resume_machine = (
                 resultat.groupby("Machine")
                 .size()
@@ -303,9 +322,6 @@ with tab5:
 with tab6:
     st.subheader("Diagrammes globaux")
 
-    # =========================
-    # Listes complètes
-    # =========================
     liste_complete_moules = pd.DataFrame({
         "Moule": sorted(base_recherche["Moule"].dropna().unique())
     })
@@ -318,9 +334,6 @@ with tab6:
         "OF": sorted(base_recherche["OF"].dropna().unique())
     })
 
-    # =========================
-    # Comptages sur la base filtrée
-    # =========================
     compte_moules = (
         base_filtre.groupby("Moule")
         .size()
@@ -339,134 +352,76 @@ with tab6:
         .reset_index(name="Nombre occurrence")
     )
 
-    # =========================
-    # Jointures pour inclure les 0
-    # =========================
-    all_moules = liste_complete_moules.merge(
-        compte_moules,
-        on="Moule",
-        how="left"
-    )
+    all_moules = liste_complete_moules.merge(compte_moules, on="Moule", how="left")
+    all_articles = liste_complete_articles.merge(compte_articles, on="Code article", how="left")
+    all_of = liste_complete_of.merge(compte_of, on="OF", how="left")
 
-    all_articles = liste_complete_articles.merge(
-        compte_articles,
-        on="Code article",
-        how="left"
-    )
-
-    all_of = liste_complete_of.merge(
-        compte_of,
-        on="OF",
-        how="left"
-    )
-
-    # =========================
-    # Remplacer NaN par 0 et convertir en entier
-    # =========================
     all_moules["Nombre montage"] = all_moules["Nombre montage"].fillna(0).astype(int)
     all_articles["Nombre utilisation"] = all_articles["Nombre utilisation"].fillna(0).astype(int)
     all_of["Nombre occurrence"] = all_of["Nombre occurrence"].fillna(0).astype(int)
 
-    # Trier
     all_moules = all_moules.sort_values(by="Nombre montage", ascending=False).reset_index(drop=True)
     all_articles = all_articles.sort_values(by="Nombre utilisation", ascending=False).reset_index(drop=True)
     all_of = all_of.sort_values(by="Nombre occurrence", ascending=False).reset_index(drop=True)
 
-    # =========================
-    # Détail machines pour les moules
-    # =========================
     detail_machine_moule = (
         base_filtre.groupby(["Moule", "Machine"])
         .size()
         .reset_index(name="Nombre")
     )
-
     detail_machine_moule["Texte machine"] = (
         detail_machine_moule["Machine"].astype(str)
         + " : "
         + detail_machine_moule["Nombre"].astype(int).astype(str)
         + " fois"
     )
-
     resume_machine_moule = (
         detail_machine_moule.groupby("Moule")["Texte machine"]
         .apply(lambda x: " | ".join(x))
         .reset_index(name="Detail machines")
     )
-
-    all_moules = all_moules.merge(
-        resume_machine_moule,
-        on="Moule",
-        how="left"
-    )
-
+    all_moules = all_moules.merge(resume_machine_moule, on="Moule", how="left")
     all_moules["Detail machines"] = all_moules["Detail machines"].fillna("Aucune machine")
 
-    # =========================
-    # Détail machines pour les articles
-    # =========================
     detail_machine_article = (
         base_filtre.groupby(["Code article", "Machine"])
         .size()
         .reset_index(name="Nombre")
     )
-
     detail_machine_article["Texte machine"] = (
         detail_machine_article["Machine"].astype(str)
         + " : "
         + detail_machine_article["Nombre"].astype(int).astype(str)
         + " fois"
     )
-
     resume_machine_article = (
         detail_machine_article.groupby("Code article")["Texte machine"]
         .apply(lambda x: " | ".join(x))
         .reset_index(name="Detail machines")
     )
-
-    all_articles = all_articles.merge(
-        resume_machine_article,
-        on="Code article",
-        how="left"
-    )
-
+    all_articles = all_articles.merge(resume_machine_article, on="Code article", how="left")
     all_articles["Detail machines"] = all_articles["Detail machines"].fillna("Aucune machine")
 
-    # =========================
-    # Détail machines pour les OF
-    # =========================
     detail_machine_of = (
         base_filtre.groupby(["OF", "Machine"])
         .size()
         .reset_index(name="Nombre")
     )
-
     detail_machine_of["Texte machine"] = (
         detail_machine_of["Machine"].astype(str)
         + " : "
         + detail_machine_of["Nombre"].astype(int).astype(str)
         + " fois"
     )
-
     resume_machine_of = (
         detail_machine_of.groupby("OF")["Texte machine"]
         .apply(lambda x: " | ".join(x))
         .reset_index(name="Detail machines")
     )
-
-    all_of = all_of.merge(
-        resume_machine_of,
-        on="OF",
-        how="left"
-    )
-
+    all_of = all_of.merge(resume_machine_of, on="OF", how="left")
     all_of["Detail machines"] = all_of["Detail machines"].fillna("Aucune machine")
 
-    # =========================
-    # Top moules
-    # =========================
     st.markdown("### Top moules")
-
     chart_moules = alt.Chart(all_moules).mark_bar().encode(
         x=alt.X("Moule:N", sort="-y", title="Numero moule"),
         y=alt.Y("Nombre montage:Q", title="Nombre montage"),
@@ -476,14 +431,9 @@ with tab6:
             alt.Tooltip("Detail machines:N", title="Machines")
         ]
     ).properties(height=400)
-
     st.altair_chart(chart_moules, use_container_width=True)
 
-    # =========================
-    # Top articles
-    # =========================
     st.markdown("### Top articles")
-
     chart_articles = alt.Chart(all_articles).mark_bar().encode(
         x=alt.X("Code article:N", sort="-y", title="Code article"),
         y=alt.Y("Nombre utilisation:Q", title="Nombre utilisation"),
@@ -493,14 +443,9 @@ with tab6:
             alt.Tooltip("Detail machines:N", title="Machines")
         ]
     ).properties(height=400)
-
     st.altair_chart(chart_articles, use_container_width=True)
 
-    # =========================
-    # Top OF
-    # =========================
     st.markdown("### Top OF")
-
     chart_of = alt.Chart(all_of).mark_bar().encode(
         x=alt.X("OF:N", sort="-y", title="OF"),
         y=alt.Y("Nombre occurrence:Q", title="Nombre occurrence"),
@@ -510,7 +455,20 @@ with tab6:
             alt.Tooltip("Detail machines:N", title="Machines")
         ]
     ).properties(height=400)
-
     st.altair_chart(chart_of, use_container_width=True)
+
+with tab7:
+    st.subheader("Base complète")
+    base_affichage = base_filtre.sort_values(by=["Date", "OF"]).reset_index(drop=True)
+    st.dataframe(base_affichage, use_container_width=True, height=500)
+
+    csv = base_affichage.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        label="Télécharger la base filtrée en CSV",
+        data=csv,
+        file_name="base_recherche_filtre.csv",
+        mime="text/csv"
+    )
+
 st.divider()
-st.caption("Application Streamlit de traçabilité entre OF, articles, moules et machines.")
+st.caption("Les fichiers sont chargés localement par l’utilisateur dans l’interface Streamlit.")
