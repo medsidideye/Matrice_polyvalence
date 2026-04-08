@@ -44,15 +44,12 @@ def nettoyer_texte(serie):
 
 @st.cache_data
 def charger_donnees():
-    # Chargement des fichiers Excel
     df1 = pd.read_excel("moule par OF.XLSX")
     df2 = pd.read_excel("Liste OF 01.04.24 au 03.04.26.xlsx")
 
-    # Clés de jointure
     df1["Ordre_str"] = nettoyer_texte(df1["Ordre"])
     df2["N_OF_GPAO_str"] = nettoyer_texte(df2["N_OF_GPAO"])
 
-    # Jointure
     base = df2.merge(
         df1,
         left_on="N_OF_GPAO_str",
@@ -60,7 +57,6 @@ def charger_donnees():
         how="inner"
     )
 
-    # Colonnes utiles
     base_recherche = base[
         [
             "N_OF_GPAO",
@@ -72,7 +68,6 @@ def charger_donnees():
         ]
     ].copy()
 
-    # Renommage
     base_recherche.columns = [
         "OF",
         "Code article",
@@ -82,43 +77,25 @@ def charger_donnees():
         "Moule"
     ]
 
-    # Nettoyage texte
     for col in ["OF", "Code article", "Libellé article", "Machine", "Moule"]:
         base_recherche[col] = nettoyer_texte(base_recherche[col])
 
-    # Nettoyage des valeurs parasites
     base_recherche["Moule"] = base_recherche["Moule"].replace(["nan", "None", ""], pd.NA)
     base_recherche["Libellé article"] = base_recherche["Libellé article"].replace(["nan", "None", ""], pd.NA)
 
-    # Conversion de la date
     base_recherche["Date"] = pd.to_datetime(base_recherche["Date"], errors="coerce")
     base_recherche["Date"] = base_recherche["Date"].dt.strftime("%Y-%m-%d")
     base_recherche["Date"] = base_recherche["Date"].replace(["NaT", "nan", "None"], pd.NA)
 
-    # Remplissage affichage
     base_recherche["Moule"] = base_recherche["Moule"].fillna("Non renseigné")
     base_recherche["Libellé article"] = base_recherche["Libellé article"].fillna("Non renseigné")
     base_recherche["Date"] = base_recherche["Date"].fillna("Non renseignée")
 
-    # Supprimer les doublons
     base_recherche = base_recherche.drop_duplicates().reset_index(drop=True)
 
     return base_recherche
 
-# =========================
-# Chargement principal
-# =========================
-try:
-    base_recherche = charger_donnees()
-except FileNotFoundError:
-    st.error("Les fichiers Excel ne sont pas trouvés dans le dossier du projet.")
-    st.info("Place les fichiers suivants dans le même dossier que app.py :")
-    st.code("moule par OF.XLSX\nListe OF 01.04.24 au 03.04.26.xlsx")
-    st.stop()
-except Exception as e:
-    st.error("Une erreur est survenue lors du chargement des données.")
-    st.exception(e)
-    st.stop()
+base_recherche = charger_donnees()
 
 # =========================
 # Sidebar
@@ -172,11 +149,12 @@ st.divider()
 # =========================
 # Onglets
 # =========================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Recherche par article",
     "Recherche par OF",
     "Recherche par moule",
     "Recherche par machine",
+    "Analyse par machine",
     "Base complète"
 ])
 
@@ -232,6 +210,64 @@ with tab4:
         st.dataframe(resultat, use_container_width=True)
 
 with tab5:
+    st.subheader("Analyse : combien de fois sur chaque machine")
+
+    type_recherche = st.selectbox(
+        "Choisir le type de recherche",
+        ["Article", "OF", "Moule"],
+        key="type_analyse"
+    )
+
+    valeur_recherche = st.text_input("Entrer la valeur à analyser", key="valeur_analyse")
+
+    if valeur_recherche:
+        if type_recherche == "Article":
+            resultat = base_recherche[
+                base_recherche["Code article"].str.contains(valeur_recherche.strip(), case=False, na=False)
+            ].copy()
+            titre = f"Répartition par machine pour l'article : {valeur_recherche}"
+
+        elif type_recherche == "OF":
+            resultat = base_recherche[
+                base_recherche["OF"] == valeur_recherche.strip()
+            ].copy()
+            titre = f"Répartition par machine pour l'OF : {valeur_recherche}"
+
+        else:
+            resultat = base_recherche[
+                base_recherche["Moule"].str.contains(valeur_recherche.strip(), case=False, na=False)
+            ].copy()
+            titre = f"Répartition par machine pour le moule : {valeur_recherche}"
+
+        if len(resultat) == 0:
+            st.warning("Aucun résultat trouvé.")
+        else:
+            st.markdown(f"### {titre}")
+
+            resume_machine = (
+                resultat.groupby("Machine")
+                .size()
+                .reset_index(name="Nombre de fois")
+                .sort_values(by="Nombre de fois", ascending=False)
+                .reset_index(drop=True)
+            )
+
+            st.dataframe(resume_machine, use_container_width=True)
+
+            st.bar_chart(
+                resume_machine.set_index("Machine")["Nombre de fois"]
+            )
+
+            st.markdown("#### Détail des lignes correspondantes")
+            st.dataframe(
+                resultat[["Machine", "Moule", "OF", "Code article", "Libellé article", "Date"]]
+                .drop_duplicates()
+                .sort_values(by=["Machine", "Date"])
+                .reset_index(drop=True),
+                use_container_width=True
+            )
+
+with tab6:
     st.subheader("Base complète")
     base_affichage = base_filtre.sort_values(by=["Date", "OF"]).reset_index(drop=True)
     st.dataframe(base_affichage, use_container_width=True, height=500)
