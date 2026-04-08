@@ -192,6 +192,69 @@ k3.metric("OF le plus fréquent", of_top_val, delta=f"{of_top_n} fois")
 st.divider()
 
 # =========================
+# Diagrammes globaux
+# =========================
+st.subheader("Diagrammes globaux")
+
+top_moules = (
+    base_filtre.groupby("Moule")
+    .size()
+    .reset_index(name="Nombre de montages")
+    .sort_values(by="Nombre de montages", ascending=False)
+    .head(15)
+    .reset_index(drop=True)
+)
+
+top_articles = (
+    base_filtre.groupby("Code article")
+    .size()
+    .reset_index(name="Nombre d'utilisations")
+    .sort_values(by="Nombre d'utilisations", ascending=False)
+    .head(15)
+    .reset_index(drop=True)
+)
+
+top_of = (
+    base_filtre.groupby("OF")
+    .size()
+    .reset_index(name="Nombre d'occurrences")
+    .sort_values(by="Nombre d'occurrences", ascending=False)
+    .head(15)
+    .reset_index(drop=True)
+)
+
+col_g1, col_g2, col_g3 = st.columns(3)
+
+with col_g1:
+    st.markdown("### Top moules")
+    chart_moules = alt.Chart(top_moules).mark_bar().encode(
+        x=alt.X("Moule:N", sort="-y", title="Moule"),
+        y=alt.Y("Nombre de montages:Q", title="Nombre"),
+        tooltip=["Moule", "Nombre de montages"]
+    ).properties(height=350)
+    st.altair_chart(chart_moules, use_container_width=True)
+
+with col_g2:
+    st.markdown("### Top articles")
+    chart_articles = alt.Chart(top_articles).mark_bar().encode(
+        x=alt.X("Code article:N", sort="-y", title="Article"),
+        y=alt.Y("Nombre d'utilisations:Q", title="Nombre"),
+        tooltip=["Code article", "Nombre d'utilisations"]
+    ).properties(height=350)
+    st.altair_chart(chart_articles, use_container_width=True)
+
+with col_g3:
+    st.markdown("### Top OF")
+    chart_of = alt.Chart(top_of).mark_bar().encode(
+        x=alt.X("OF:N", sort="-y", title="OF"),
+        y=alt.Y("Nombre d'occurrences:Q", title="Nombre"),
+        tooltip=["OF", "Nombre d'occurrences"]
+    ).properties(height=350)
+    st.altair_chart(chart_of, use_container_width=True)
+
+st.divider()
+
+# =========================
 # Onglets
 # =========================
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
@@ -299,13 +362,12 @@ with tab5:
             )
 
             st.dataframe(resume_machine, use_container_width=True)
-            st.bar_chart(resume_machine.set_index("Machine")["Nombre de fois"])
 
 with tab6:
     st.subheader("Top moules interactif")
     st.write("Clique sur une barre pour voir le détail par machine.")
 
-    top_moules = (
+    top_moules_interactif = (
         base_filtre.groupby("Moule")
         .size()
         .reset_index(name="Nombre de montages")
@@ -317,7 +379,7 @@ with tab6:
     selection = alt.selection_point(fields=["Moule"], name="select_moule")
 
     chart = (
-        alt.Chart(top_moules)
+        alt.Chart(top_moules_interactif)
         .mark_bar()
         .encode(
             x=alt.X("Moule:N", sort="-y", title="Moule"),
@@ -330,13 +392,11 @@ with tab6:
 
     event = st.altair_chart(
         chart,
-        width="stretch",
+        use_container_width=True,
         on_select="rerun",
         selection_mode="select_moule",
         key="chart_moules"
     )
-
-    st.dataframe(top_moules, use_container_width=True)
 
     moule_selectionne = None
 
@@ -360,17 +420,6 @@ with tab6:
         )
 
         st.dataframe(detail_machine, use_container_width=True)
-
-        detail_lignes = (
-            base_filtre[base_filtre["Moule"] == moule_selectionne]
-            [["Machine", "Moule", "OF", "Code article", "Libellé article", "Date"]]
-            .drop_duplicates()
-            .sort_values(by=["Machine", "Date"])
-            .reset_index(drop=True)
-        )
-
-        st.markdown("#### Lignes détaillées")
-        st.dataframe(detail_lignes, use_container_width=True)
 
 with tab7:
     st.subheader("Base complète")
