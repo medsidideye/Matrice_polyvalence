@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 
 st.set_page_config(
     page_title="Traçabilité OF / Articles / Moules / Machines",
@@ -25,7 +26,7 @@ st.markdown("""
     padding-top: 1.5rem;
 }
 div[data-testid="stMetricValue"] {
-    font-size: 1.7rem;
+    font-size: 1.6rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -135,7 +136,7 @@ if filtre_moule != "Tous":
 base_filtre = base_filtre.reset_index(drop=True)
 
 # =========================
-# Indicateurs
+# Indicateurs globaux
 # =========================
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Enregistrements", len(base_filtre))
@@ -147,14 +148,59 @@ c5.metric("Machines", base_filtre["Machine"].nunique())
 st.divider()
 
 # =========================
+# Indicateurs métier
+# =========================
+moule_top = (
+    base_filtre.groupby("Moule")
+    .size()
+    .reset_index(name="Nombre")
+    .sort_values(by="Nombre", ascending=False)
+    .reset_index(drop=True)
+)
+
+article_top = (
+    base_filtre.groupby("Code article")
+    .size()
+    .reset_index(name="Nombre")
+    .sort_values(by="Nombre", ascending=False)
+    .reset_index(drop=True)
+)
+
+of_top = (
+    base_filtre.groupby("OF")
+    .size()
+    .reset_index(name="Nombre")
+    .sort_values(by="Nombre", ascending=False)
+    .reset_index(drop=True)
+)
+
+moule_top_val = moule_top.iloc[0]["Moule"] if len(moule_top) > 0 else "-"
+moule_top_n = int(moule_top.iloc[0]["Nombre"]) if len(moule_top) > 0 else 0
+
+article_top_val = article_top.iloc[0]["Code article"] if len(article_top) > 0 else "-"
+article_top_n = int(article_top.iloc[0]["Nombre"]) if len(article_top) > 0 else 0
+
+of_top_val = of_top.iloc[0]["OF"] if len(of_top) > 0 else "-"
+of_top_n = int(of_top.iloc[0]["Nombre"]) if len(of_top) > 0 else 0
+
+st.subheader("Indicateurs métier")
+k1, k2, k3 = st.columns(3)
+k1.metric("Moule le plus monté", moule_top_val, delta=f"{moule_top_n} fois")
+k2.metric("Article le plus utilisé", article_top_val, delta=f"{article_top_n} fois")
+k3.metric("OF le plus fréquent", of_top_val, delta=f"{of_top_n} fois")
+
+st.divider()
+
+# =========================
 # Onglets
 # =========================
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "Recherche par article",
     "Recherche par OF",
     "Recherche par moule",
     "Recherche par machine",
     "Analyse par machine",
+    "Top moules interactif",
     "Base complète"
 ])
 
@@ -253,21 +299,80 @@ with tab5:
             )
 
             st.dataframe(resume_machine, use_container_width=True)
-
-            st.bar_chart(
-                resume_machine.set_index("Machine")["Nombre de fois"]
-            )
-
-            st.markdown("#### Détail des lignes correspondantes")
-            st.dataframe(
-                resultat[["Machine", "Moule", "OF", "Code article", "Libellé article", "Date"]]
-                .drop_duplicates()
-                .sort_values(by=["Machine", "Date"])
-                .reset_index(drop=True),
-                use_container_width=True
-            )
+            st.bar_chart(resume_machine.set_index("Machine")["Nombre de fois"])
 
 with tab6:
+    st.subheader("Top moules interactif")
+    st.write("Clique sur une barre pour voir le détail par machine.")
+
+    top_moules = (
+        base_filtre.groupby("Moule")
+        .size()
+        .reset_index(name="Nombre de montages")
+        .sort_values(by="Nombre de montages", ascending=False)
+        .head(20)
+        .reset_index(drop=True)
+    )
+
+    selection = alt.selection_point(fields=["Moule"], name="select_moule")
+
+    chart = (
+        alt.Chart(top_moules)
+        .mark_bar()
+        .encode(
+            x=alt.X("Moule:N", sort="-y", title="Moule"),
+            y=alt.Y("Nombre de montages:Q", title="Nombre de montages"),
+            tooltip=["Moule", "Nombre de montages"]
+        )
+        .add_params(selection)
+        .properties(height=450)
+    )
+
+    event = st.altair_chart(
+        chart,
+        width="stretch",
+        on_select="rerun",
+        selection_mode="select_moule",
+        key="chart_moules"
+    )
+
+    st.dataframe(top_moules, use_container_width=True)
+
+    moule_selectionne = None
+
+    try:
+        points = event.selection["select_moule"]
+        if "Moule" in points and len(points["Moule"]) > 0:
+            moule_selectionne = points["Moule"][0]
+    except Exception:
+        moule_selectionne = None
+
+    if moule_selectionne:
+        st.markdown(f"### Détail pour le moule : {moule_selectionne}")
+
+        detail_machine = (
+            base_filtre[base_filtre["Moule"] == moule_selectionne]
+            .groupby("Machine")
+            .size()
+            .reset_index(name="Nombre de fois")
+            .sort_values(by="Nombre de fois", ascending=False)
+            .reset_index(drop=True)
+        )
+
+        st.dataframe(detail_machine, use_container_width=True)
+
+        detail_lignes = (
+            base_filtre[base_filtre["Moule"] == moule_selectionne]
+            [["Machine", "Moule", "OF", "Code article", "Libellé article", "Date"]]
+            .drop_duplicates()
+            .sort_values(by=["Machine", "Date"])
+            .reset_index(drop=True)
+        )
+
+        st.markdown("#### Lignes détaillées")
+        st.dataframe(detail_lignes, use_container_width=True)
+
+with tab7:
     st.subheader("Base complète")
     base_affichage = base_filtre.sort_values(by=["Date", "OF"]).reset_index(drop=True)
     st.dataframe(base_affichage, use_container_width=True, height=500)
